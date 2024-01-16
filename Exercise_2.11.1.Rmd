@@ -1,0 +1,108 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library()
+```
+
+library() a new tab which shows the R packages that are available because they have been installed.
+
+```{r}
+search()
+```
+search() shows which packages are currently loaded.
+
+```{r}
+# to get help on using install.packages
+?install.packages
+
+# Note: the parameter is a quoted string!
+install.packages("seqinr",repos="https://cran.rstudio.com/")   
+```
+?install packages is used to get help documentation for the function. The information appears on the Help tag on the bottom right corner of the screen.
+
+install.packages installs the package and the progress is shown in the console.
+```{r}
+library(help="seqinr")
+```
+library(help="seqinr") opens a new tab which contains the documentation for the package seqinr.
+
+```{r}
+library(seqinr)
+ls("package:seqinr")
+```
+This loads the package and lists the functions available in the package.
+
+```{r}
+?seqinr::a 
+```
+?seqinr::a will open the Help tab and shows the documentation on the function a in the seqinr package.
+
+```{r}
+seqinr::a("Tyr")
+```
+```{r}
+seqinr::words(3, c("A", "G", "C", "U"))
+```
+This function produces all the possible 3-letter words that can be made from the letters "A", "G", "C", and "U".
+```{r}
+?data
+```
+The documentation for the function data from the utils package is shown in the Help tab.
+```{r}
+data(package="seqinr")            # list the available data
+```
+The data sets in the package are shown in a different tab.
+```{r}
+data(aaindex, package="seqinr")   
+```
+This command loads the aaindex data set into the environment. It can now be used.
+```{r}
+aaindex$FASG890101 
+```
+```{r}
+aaindex$PONJ960101 
+```
+
+Information about the amino acids at the two indices indicated are produced.
+
+```{r}
+plot(aaindex$FASG890101$I,
+     aaindex$PONJ960101$I,
+     xlab="hydrophobicity", ylab="volume", type="n")
+text(aaindex$FASG890101$I,
+     aaindex$PONJ960101$I,
+     labels=a(names(aaindex$FASG890101$I)))
+```
+The single-letter codes of the amino acids are plotted based on their hydrophobicity (x-axis) and volume (y-axis).
+```{r}
+seqinr::choosebank("swissprot")
+mySeq <- seqinr::query("mySeq", "N=MBP1_YEAST")
+mbp1 <- seqinr::getSequence(mySeq)
+seqinr::closebank()
+x <- seqinr::AAstat(mbp1[[1]])
+barplot(sort(x$Compo), cex.names = 0.6)
+```
+
+```{r}
+library(seqinr)
+choosebank("swissprot")
+mySeq <- query("mySeq", "N=MBP1_YEAST")
+mbp1 <- getSequence(mySeq)
+closebank()
+x <- AAstat(mbp1[[1]])
+barplot(sort(x$Compo), cex.names = 0.6)
+```
+Another way to plot, but without explicitly stating which package the functions come from.
+```{r}
+if (! requireNamespace("seqinr", quietly=TRUE)) {
+  install.packages("seqinr")
+}
+```
+This ensures that the package is only installed when it has not been install before, instead of installing it every time.
+
+
+
+
