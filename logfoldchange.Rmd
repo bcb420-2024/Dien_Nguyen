@@ -1,0 +1,21 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+rand_int <- sample(1:100, 50)
+dim(rand_int) <- c(5, 10)
+colnames(rand_int) <- c("cond1", "cond2", "cond3", "cond4", "cond5", "ctrl1", "ctrl2", "ctrl3", "ctrl4", "ctrl5")
+rownames(rand_int) <- c("gene1", "gene2", "gene3", "gene4", "gene5")
+rand_int
+```
+
+```{r}
+apply(rand_int, 1, FUN = function(x){
+  cond_mean <- mean(x[1:5])
+  ctrl_mean <- mean(x[6:10])
+ return(log2(cond_mean / ctrl_mean))
+})
+```
+
