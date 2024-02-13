@@ -1,0 +1,339 @@
+---
+title: "Assignment 1 R Notebook"
+author: "Dien Nguyen"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+bibliography: references.bib
+---
+# Install and load required packages
+```{r message=FALSE}
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+if (!require("org.Hs.eg.db", quietly = TRUE))
+  BiocManager::install("org.Hs.eg.db")
+if (!require("dplyr", quietly = TRUE))
+  install.packages("dplyr")
+library(org.Hs.eg.db)
+library(ggplot2)
+library(dplyr)
+library(edgeR)
+```
+# Introduction to the data {#q1}
+The data set under investigation is from a GEO (Gene Expression Omnibus) 
+[accession](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE144474)
+titled "Contribution of brain pericytes in blood-brain barrier (BBB)
+formation and maintenance: A transcriptomic study of cocultured human 
+endothelial cells derived from hematopoietic stem cells"[@data_paper]. 
+
+The interaction of endothelial cells (ECs) and brain pericytes induces BBB 
+characteristics in brain ECs during embryogenesis. Pericytes are a type of 
+vascular cells embedded in the basement membrane, and is important for BBB 
+functioning, so they can be used to differentiate stem cells into ECs and them 
+BBB in vitro. However, the molecular events in BBB maturation are not fully 
+understood.
+
+This data set was interesting to me because I am interested in learning more 
+about genes involved in stem cell differentiation, having previously done 
+single-cell RNAseq analysis on induced pluripotent stem cells (iPSCs)-derived
+mature lung tissue. I am interested in seeing the similarities and differences 
+in differentation processes in the lung and brain.
+
+# Download data from GEO
+```{r message=FALSE, warning= FALSE}
+# load counts table from GEO
+if (!("raw_counts_data.csv" %in% list.files())) {
+  urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+  path <- paste(urld, "acc=GSE144474", "file=GSE144474_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep="&");
+  raw_counts <- as.data.frame(data.table::fread(path, header=T, colClasses="integer"), rownames=1)
+  
+  # export data frame as csv file
+  write.csv(raw_counts, "raw_counts_data.csv", row.names = FALSE)
+} else {
+  raw_counts <- read.csv("./raw_counts_data.csv")
+}
+```
+
+# Assess data quality {#q2}
+There are three conditions. The control is the solo-cultured ECs. The test 
+conditions are ECs co-cultured with human pericytes, and ECs co-cultured with 
+bovine pericytes. For each condition, there are 3 samples, which are sampled at 
+different timepoints, and for each timepoint there are three replicates. 
+In total, there are 27 samples.
+
+In the raw counts data set, the samples are encoded, so the column names have to 
+be renamed to be easily interpreted.
+```{r}
+Samples <- c("GeneID", "Solo_0h_Rep1", "Solo_0h_Rep2", "Solo_0h_Rep3",
+             "Solo_48h_Rep1", "Solo_48h_Rep2", "Solo_48h_Rep3",
+             "Solo_96h_Rep1", "Solo_96h_Rep2", "Solo_96h_Rep3",
+             "HumanCC_24h_Rep1", "HumanCC_24h_Rep2", "HumanCC_24h_Rep3",
+             "HumanCC_48h_Rep1", "HumanCC_48h_Rep2", "HumanCC_48h_Rep3",
+             "HumanCC_96h_Rep1", "HumanCC_96h_Rep2", "HumanCC_96h_Rep3",
+             "BovineCC_24h_Rep1", "BovineCC_24h_Rep2", "BovineCC_24h_Rep3",
+             "BovineCC_48h_Rep1", "BovineCC_48h_Rep2", "BovineCC_48h_Rep3",
+             "BovineCC_96h_Rep1", "BovineCC_96h_Rep2", "BovineCC_96h_Rep3")
+
+Samples <- factor(Samples, levels = unique(Samples))
+
+
+colnames(raw_counts) <- Samples
+```
+
+## Read counts per sample
+Here, we plot the number of read counts for each sample using ggplot2 [@ggplot_ref].
+For most conditions, the number of read counts among replicates are similar, 
+except for the BovineCC_24h sample. This is highly likely due to technical 
+variations and can be correct for later in normalization and averaging replicates.
+
+```{r message=FALSE, warning= FALSE}
+# Calculate and plot read counts per sample
+read_counts <- as.data.frame(colSums(raw_counts))
+colnames(read_counts) <- c("Reads")
+read_counts <- subset(read_counts, rownames(read_counts) != "GeneID")
+read_counts$Samples <- row.names(read_counts)
+
+# Plot read counts per sample
+ggplot2::ggplot(read_counts, aes(x=Samples, y=Reads))+
+   geom_bar(stat = "identity") + 
+   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ 
+```
+
+The mean read counts per gene:
+```{r}
+mean(read_counts$Reads)
+```
+The standard deviation percentage is:
+```{r}
+sd(read_counts$Reads) / mean(read_counts$Reads) * 100
+```
+## Genes detected per sample
+
+Here, we plot the number of genes detected per sample using ggplot2 [@ggplot_ref].
+The number of genes are consistent across all samples.
+```{r}
+# Calculate and plot genes per sample
+gene_counts <- as.data.frame(colSums(raw_counts > 0))
+colnames(gene_counts) <- c("Genes")
+gene_counts <- subset(gene_counts, rownames(gene_counts) != "GeneID")
+gene_counts$Samples <- row.names(gene_counts)
+
+# Plot genes per sample
+ggplot2::ggplot(gene_counts, aes(x=Samples, y=Genes)) +
+   geom_bar(stat = "identity") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Map to HUGO genes
+
+There are a few data sets and R packages available to map different gene
+identifiers with each other, but org.Hs.eg.db is the one most suitable for
+mapping Entrez ID to HUGO symbols [@mapping_ref]. The dplyr package was used to 
+join (map) the genes in our data set to the HUGO symbols [@dplyr_ref]
+```{r}
+# an object from org.Hs.EgSYMBOL that contains all mapping from entrez ID to 
+# HUGO symbol
+x <- org.Hs.egSYMBOL
+mapped_genes <- mappedkeys(x)
+mapping <- as.data.frame(x[mapped_genes])
+
+# change column name and data type to join
+colnames(mapping)[1] <- "GeneID"
+mapping$GeneID <- as.integer(mapping$GeneID)
+
+# using left_join will result in NA for genes that cannot be mapped and retain
+# the original data set
+mapped_data <- dplyr::left_join(raw_counts, mapping, by = "GeneID")
+
+unmapped_data <- subset(mapped_data, is.na(symbol))
+
+mapped_data <- subset(mapped_data, !is.na(symbol))
+```
+
+Number of rows that were not mapped:
+```{r}
+nrow(unmapped_data)
+```
+Percentage of rows that were not mapped:
+```{r}
+(nrow(unmapped_data) / nrow(raw_counts)) * 100
+```
+
+Although only a small percentage of the genes were unmapped, we will store them 
+and later do some analysis to determine whether they should be discarded or 
+further investigated.
+
+## Genes that are mapped to the same HUGO ID:{#q4}
+```{r}
+# Find genes mapped to the same HUGO ID
+duplicated_symbols <- mapped_data$symbol[duplicated(mapped_data$symbol)]
+```
+
+Rows with duplicates:
+```{r}
+mapped_data[mapped_data$symbol %in% duplicated_symbols,]
+```
+They both have low read counts, and and are likely going to be filtered out in
+the next step. Since they are very similar, only the first one was kept
+
+```{r}
+# Only keep the first one
+mapped_data <- mapped_data[!duplicated(mapped_data$symbol), ]
+
+# Set HUGO ID as rownames and remove unnecessary columns
+rownames(mapped_data) <- mapped_data$symbol
+mapped_data <- subset(mapped_data, select=c(-GeneID, -symbol))
+```
+
+## Visualize distribution before removing genes with row counts
+```{r}
+counts_density <- apply(log2(mapped_data), 2, density)
+density_df <- do.call(rbind, lapply(seq_along(counts_density), function(i) {
+  data.frame(
+    x = counts_density[[i]]$x,
+    y = counts_density[[i]]$y,
+    sample = colnames(mapped_data)[i]
+  )
+}))
+
+# Create ggplot with density plots for each sample
+ggplot2::ggplot(density_df, aes(x = x, y = y, color = sample)) +
+  geom_line() +
+  labs(x = "Log2(Gene Counts)", y = "Density", sample = "Samples") +
+  theme_minimal()
+```
+
+#Remove genes with low read counts {#q5}
+
+Genes with low read counts were removed. The cpm function from the edgeR package
+was used to determining the counts per million for each gene [@edgeR_ref].
+```{r}
+# Filter out genes with low read counts
+min_num_samples <- 3
+data_mtx <- as.matrix(mapped_data)
+# get rid of low counts
+keep = rowSums(edgeR::cpm(data_mtx) > 1) > min_num_samples
+filtered_data_mtx = data_mtx[keep,]
+```
+
+Number and percentage of outliers removed:
+```{r}
+nrow(mapped_data) - nrow(filtered_data_mtx)
+((nrow(mapped_data) - nrow(filtered_data_mtx)) / nrow(mapped_data)) * 100
+```
+In the original paper, genes with low read counts were removed, but the 
+thresholds were not specified. Here, although the thresholds set were not too 
+stringent, more than 60% of the mapped genes were removed due to low read counts.
+
+We will do the same for the unmapped data, to see if they are worth keeping for 
+further analysis.
+```{r}
+unmapped_data <- subset(unmapped_data, select = c(-symbol))
+unmapped_mtx <- as.matrix(unmapped_data)
+keep = rowSums(edgeR::cpm(unmapped_mtx) > 1) > min_num_samples
+unmapped_filtered_mtx <- unmapped_mtx[keep,]
+```
+
+## Genes that cannot be mapped to HUGO IDs {#q3}
+Percentage of unmapped rows that are filtered out:
+```{r}
+((nrow(unmapped_data) - nrow(unmapped_filtered_mtx)) / nrow(unmapped_data)) * 100
+```
+Since nearly 70% of the unmapped rows are eventually filtered out due to low
+read counts, we will not be doing further analysis of the unmapped rows. 
+
+## Visualize data set before and after removing outliers
+```{r}
+counts_density <- apply(log2(filtered_data_mtx), 2, density)
+density_df <- do.call(rbind, lapply(seq_along(counts_density), function(i) {
+  data.frame(
+    x = counts_density[[i]]$x,
+    y = counts_density[[i]]$y,
+    sample = colnames(mapped_data)[i]
+  )
+}))
+
+# Create ggplot with density plots for each sample
+ggplot2::ggplot(density_df, aes(x = x, y = y, color = sample)) +
+  geom_line() +
+  labs(x = "Log2(Gene Counts)", y = "Density", color = "Samples") +
+  theme_minimal()
+```
+
+# Normalization
+The data set was normalized using the Trimmed M Means (TMM) method, in the 
+edgeR package [@edgeR_ref]. This method was chosen because its assumptions
+line up with the assumptions we made for this data set. Since the samples are
+quite similar in terms of cell type and the timepoints at which they were
+sampled, we expect most of the cells to be non-differentially expressed. We 
+specified the group for each replicate and normalized by library size.
+```{r}
+condition_names <- factor(c("Solo_0h", "Solo_0h", "Solo_0h", 
+                            "Solo_48h", "Solo_48h", "Solo_48h",
+                            "Solo_96h", "Solo_96h", "Solo_96h",
+                            "HumanCC_24h", "HumanCC_24h", "HumanCC_24h",
+                            "HumanCC_48", "HumanCC_48", "HumanCC_48",
+                            "HumanCC_96h", "HumanCC_96h", "HumanCC_96h",
+                            "BovineCC_24h", "BovineCC_24h", "BovineCC_24h",
+                            "BovineCC_48h",  "BovineCC_48h",  "BovineCC_48h",
+                            "BovineCC_96h", "BovineCC_96h", "BovineCC_96h"))
+dge <- edgeR::DGEList(counts = filtered_data_mtx, group = condition_names)
+dge_normalized <- edgeR::calcNormFactors(dge)
+normalized_df <- edgeR::cpm(dge_normalized)
+```
+
+## Visualize data set after normalization
+```{r}
+counts_density <- apply(log2(normalized_df), 2, density)
+density_df <- do.call(rbind, lapply(seq_along(counts_density), function(i) {
+  data.frame(
+    x = counts_density[[i]]$x,
+    y = counts_density[[i]]$y,
+    sample = colnames(normalized_df)[i]
+  )
+}))
+
+# Create ggplot with density plots for each sample
+ggplot2::ggplot(density_df, aes(x = x, y = y, color = sample)) +
+  geom_line() +
+  labs(x = "Log2(Gene Counts)", y = "Density", color = "Samples") +
+  theme_minimal()
+```
+
+# Combine replicates using average {#q6}
+There are 3 replicates for each condition and timepoints. They were combined
+by calculating the average between them. 
+
+```{r}
+condition_names <- c("Solo_0h", "Solo_48h", "Solo_96h", 
+                "HumanCC_24h", "HumanCC_48", "HumanCC_96h", 
+                "BovineCC_24h", "BovineCC_48h", "BovineCC_96h")
+averaged_df <- c()
+
+for (i in seq_along(condition_names)) {
+  end_col <- i * 3
+  start_col <- end_col - 2
+  averaged_df <- cbind(averaged_df, rowMeans(normalized_df[,start_col:end_col]))
+}
+colnames(averaged_df) <- condition_names
+```
+
+# Final coverage {#q7}
+```{r}
+sum(averaged_df)
+```
+
+
+# Report questions
+1. [Why is this data set of interest to you?](#q1)
+2. [What are the control and test conditions of the dataset?](#q2)
+3. [How many samples in each of the conditions of your dataset?](#q2)
+4. [Were there expression values that were not unique for specific genes?8 How did you handle these?](#q4)
+5. [Were there expression values that could not be mapped to current HUGO symbols?](#q3)
+6. [Were there any outliers in your dataset? How were they handled in the originating paper? How many outliers were removed?](#q5)
+7. [How did you handle replicates?](#q6)
+8. [What is the final coverage of your dataset?](#q7)
+```
+
