@@ -376,8 +376,6 @@ display: none;
 
 <div id="TOC">
 <ul>
-<li><a href="#summary-of-previous-analysis" id="toc-summary-of-previous-analysis">Summary of previous
-analysis</a></li>
 <li><a href="#install-and-load-required-packages" id="toc-install-and-load-required-packages">Install and load required
 packages</a></li>
 <li><a href="#introduction-to-the-data" id="toc-introduction-to-the-data">Introduction to the data</a></li>
@@ -415,6 +413,8 @@ over-representation analysis</a></li>
 </ul></li>
 <li><a href="#interpret-results" id="toc-interpret-results">Interpret
 results</a></li>
+<li><a href="#summary-of-previous-analyses" id="toc-summary-of-previous-analyses">Summary of previous
+analyses</a></li>
 <li><a href="#assignment-3" id="toc-assignment-3">Assignment 3</a></li>
 <li><a href="#non-thresholded-gene-set-enrichment-analysis" id="toc-non-thresholded-gene-set-enrichment-analysis">Non-thresholded
 gene set enrichment analysis</a>
@@ -444,9 +444,6 @@ GeneMANIA</a></li>
 <pre class="r"><code>if (!require(&quot;dplyr&quot;, quietly = TRUE))
   install.packages(&quot;dplyr&quot;)
 library(&quot;dplyr&quot;)</code></pre>
-<div id="summary-of-previous-analysis" class="section level1">
-<h1>Summary of previous analysis</h1>
-</div>
 <div id="install-and-load-required-packages" class="section level1">
 <h1>Install and load required packages</h1>
 <pre class="r"><code>if (!require(&quot;BiocManager&quot;, quietly = TRUE))
@@ -963,6 +960,33 @@ processes that are up-regulated in co-cultured cells. This is supported
 by the formation of tight junctions during BBB development. The
 overexpression of CDH15, an adherens junction marker, in co-cultured
 cells suggests that tight junctions have started to form <span class="citation">(Saili et al. 2017)</span>.</p>
+</div>
+<div id="summary-of-previous-analyses" class="section level1">
+<h1>Summary of previous analyses</h1>
+<p>The data set under investigation is from a GEO (Gene Expression
+Omnibus) <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE144474">accession</a>
+titled “Contribution of brain pericytes in blood-brain barrier (BBB)
+formation and maintenance: A transcriptomic study of cocultured human
+endothelial cells derived from hematopoietic stem cells” <span class="citation">(Heymans et al. 2020)</span>.</p>
+<p>The interaction of endothelial cells (ECs) and brain pericytes
+induces BBB characteristics in brain ECs during embryogenesis. Pericytes
+are a type of vascular cells embedded in the basement membrane, and is
+important for BBB functioning, so they can be used to differentiate stem
+cells into ECs and them BBB in vitro. However, the molecular events in
+BBB maturation are not fully understood.</p>
+<p>The data was first downloaded from GEO. Then, simple statistics like
+finding the mean and standard deviation, and generating plots of gene
+counts, were done to assess data quality. Each gene was mapped to a HUGO
+gene symbol, from an ENTREZ gene symbol. Low quality reads were removed
+in the data cleaning step. The, normalization was applied.</p>
+<p>Differential expression analysis was carried out to see which genes
+are expressed at high or low amounts. 753 genes passed the p-value
+threshold of 0.05, but only 7 passed FDR corrrection. There were a total
+of 185 differentially expressed genes.</p>
+<p>Thresholded over expression analysis (ORA) was carried out. The
+thresholds are +0.7 and -0.7 logFC. ORA was run using gprofiler, with
+the February release of the <a href="GO:BP" class="uri">GO:BP</a> data
+set.</p>
 </div>
 <div id="assignment-3" class="section level1">
 <h1>Assignment 3</h1>
